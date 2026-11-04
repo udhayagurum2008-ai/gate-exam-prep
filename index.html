@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -7,176 +7,544 @@
   <link rel="manifest" href="./manifest.json" />
   <meta name="theme-color" content="#2563eb" />
   <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
-  <header class="bg-slate-800 border-b border-slate-700 p-4 sticky top-0 z-50 flex flex-wrap justify-between items-center gap-4">
-    <div class="flex items-center gap-3">
-      <div class="bg-blue-600 text-white font-bold px-3 py-1.5 rounded-lg text-lg">GATE</div>
-      <div>
-        <h1 class="text-xl font-bold tracking-tight">GATE ECE Placement Hub</h1>
-        <p class="text-xs text-slate-400">20,000+ Questions • Offline Supported PWA</p>
-      </div>
-    </div>
-    <div class="flex items-center gap-2">
-      <button id="pwaInstallBtn" class="hidden bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition flex items-center gap-1.5 shadow">
-        <span>📲</span> Install App
-      </button>
-      <span id="offlineBadge" class="bg-slate-700 text-slate-300 text-xs px-2.5 py-1 rounded-full font-medium">Ready</span>
-    </div>
-  </header>
-
-  <main class="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 space-y-6">
-    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col md:flex-row gap-4 justify-between items-center">
-      <div class="flex items-center gap-2 w-full md:w-auto">
-        <label class="text-sm font-medium text-slate-300">Select Part:</label>
-        <button id="btnPart1" onclick="switchPart(1)" class="part-btn bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 transition shadow">Part 1</button>
-        <button id="btnPart2" onclick="switchPart(2)" class="part-btn bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-600 transition">Part 2</button>
-        <button id="btnAll" onclick="switchPart('all')" class="part-btn bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-600 transition">All Parts</button>
-      </div>
-      <div class="w-full md:w-80">
-        <input type="text" id="searchInput" oninput="filterQuestions()" placeholder="Search questions or topics..." class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-      </div>
-    </div>
-
-    <div id="statusBox" class="text-sm text-slate-400 flex justify-between items-center px-1">
-      <span id="questionCount">Loading question sets...</span>
-      <span id="currentPartLabel" class="font-semibold text-blue-400">Part 1</span>
-    </div>
-
-    <div id="questionsContainer" class="space-y-4"></div>
-  </main>
-
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="./public/questions_part1.js"></script>
   <script src="./public/questions_part2.js"></script>
-  <script src="./questions_part1.js"></script>
-  <script src="./questions_part2.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
 
-  <script>
-    let activePart = 1;
-    let deferredPrompt = null;
-
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(() => console.log('PWA ServiceWorker registered'))
-          .catch(err => console.error('PWA SW Registration error:', err));
-      });
+    function getRawQuestions() {
+      const p1 = window.GATE_QUESTIONS_PART1 || window.questions_part1 || window.GATE_QUESTIONS_P1 || [];
+      const p2 = window.GATE_QUESTIONS_PART2 || window.questions_part2 || window.GATE_QUESTIONS_P2 || [];
+      const raw = [...p1, ...p2];
+      return raw.map((q, idx) => ({
+        id: q.id || `Q-${idx + 1}`,
+        section: q.sec || q.section || 'technical',
+        topic: q.topic || 'General',
+        difficulty: q.diff || q.difficulty || 'Medium',
+        question: q.q || q.question || '',
+        options: Array.isArray(q.opts) ? q.opts : (Array.isArray(q.options) ? q.options : []),
+        correctAnswer: typeof q.ans === 'number' ? q.ans : (q.ans !== undefined ? Number(q.ans) : 0),
+        explanation: q.sol || q.explanation || 'Detailed step-by-step solution available for review.',
+        formula: q.form || '',
+        exam: q.exam || 'GATE'
+      })).filter(q => q.question.trim().length > 0);
     }
 
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      const installBtn = document.getElementById('pwaInstallBtn');
-      if (installBtn) installBtn.classList.remove('hidden');
-    });
+    function App() {
+      const [questions, setQuestions] = useState([]);
+      const [activeTab, setActiveTab] = useState('practice');
+      const [selectedSection, setSelectedSection] = useState('all');
+      const [selectedTopic, setSelectedTopic] = useState('all');
+      const [selectedDifficulty, setSelectedDifficulty] = useState('all');
+      const [currentIndex, setCurrentIndex] = useState(0);
+      const [selectedOption, setSelectedOption] = useState(null);
+      const [showExplanation, setShowExplanation] = useState(false);
+      const [userAnswers, setUserAnswers] = useState({});
+      const [bookmarks, setBookmarks] = useState(new Set());
+      const [isDarkMode, setIsDarkMode] = useState(true);
 
-    document.getElementById('pwaInstallBtn')?.addEventListener('click', async () => {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        document.getElementById('pwaInstallBtn').classList.add('hidden');
-      }
-      deferredPrompt = null;
-    });
+      const [mockActive, setMockActive] = useState(false);
+      const [timeLeft, setTimeLeft] = useState(1800);
+      const [mockScore, setMockScore] = useState(null);
 
-    function getQuestions(part) {
-      let q = [];
-      if (part === 1 || part === 'all') {
-        if (window.GATE_QUESTIONS_PART1) q = q.concat(window.GATE_QUESTIONS_PART1);
-        if (window.GATE_QUESTIONS_P1) q = q.concat(window.GATE_QUESTIONS_P1);
-      }
-      if (part === 2 || part === 'all') {
-        if (window.GATE_QUESTIONS_PART2) q = q.concat(window.GATE_QUESTIONS_PART2);
-        if (window.GATE_QUESTIONS_P2) q = q.concat(window.GATE_QUESTIONS_P2);
-      }
-      return q;
-    }
+      useEffect(() => {
+        const loaded = getRawQuestions();
+        setQuestions(loaded);
+      }, []);
 
-    function switchPart(part) {
-      activePart = part;
-      document.querySelectorAll('.part-btn').forEach(btn => {
-        btn.className = 'part-btn bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-600 transition';
-      });
-      if (part === 1) document.getElementById('btnPart1').className = 'part-btn bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 transition shadow';
-      else if (part === 2) document.getElementById('btnPart2').className = 'part-btn bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 transition shadow';
-      else document.getElementById('btnAll').className = 'part-btn bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 transition shadow';
+      useEffect(() => {
+        let timer;
+        if (mockActive && timeLeft > 0) {
+          timer = setInterval(() => setTimeLeft(t => t - 1), 1000);
+        } else if (mockActive && timeLeft === 0) {
+          finishMockExam();
+        }
+        return () => clearInterval(timer);
+      }, [mockActive, timeLeft]);
 
-      document.getElementById('currentPartLabel').innerText = part === 'all' ? 'All Parts' : 'Part ' + part;
-      renderQuestions();
-    }
+      const filteredQuestions = useMemo(() => {
+        return questions.filter(q => {
+          if (selectedSection !== 'all' && q.section !== selectedSection) return false;
+          if (selectedTopic !== 'all' && q.topic !== selectedTopic) return false;
+          if (selectedDifficulty !== 'all' && q.difficulty !== selectedDifficulty) return false;
+          return true;
+        });
+      }, [questions, selectedSection, selectedTopic, selectedDifficulty]);
 
-    function renderQuestions() {
-      const container = document.getElementById('questionsContainer');
-      const search = document.getElementById('searchInput').value.toLowerCase();
-      let questions = getQuestions(activePart);
+      const topics = useMemo(() => {
+        const tSet = new Set(questions.map(q => q.topic));
+        return Array.from(tSet);
+      }, [questions]);
 
-      if (search) {
-        questions = questions.filter(q => 
-          (q.question && q.question.toLowerCase().includes(search)) ||
-          (q.topic && q.topic.toLowerCase().includes(search)) ||
-          (q.subject && q.subject.toLowerCase().includes(search))
-        );
-      }
+      const currentQ = filteredQuestions[currentIndex] || filteredQuestions[0];
 
-      document.getElementById('questionCount').innerText = `Showing ${questions.length} questions`;
+      const handleSelectOption = (idx) => {
+        setSelectedOption(idx);
+      };
 
-      if (questions.length === 0) {
-        container.innerHTML = `
-          <div class="bg-slate-800 p-8 rounded-xl text-center border border-slate-700">
-            <p class="text-slate-400">No questions found for the selected criteria.</p>
-          </div>`;
-        return;
-      }
+      const handleSubmitAnswer = () => {
+        if (selectedOption === null || !currentQ) return;
+        setShowExplanation(true);
+        setUserAnswers(prev => ({
+          ...prev,
+          [currentQ.id]: {
+            selected: selectedOption,
+            isCorrect: selectedOption === currentQ.correctAnswer
+          }
+        }));
+      };
 
-      container.innerHTML = questions.slice(0, 100).map((q, idx) => `
-        <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-sm space-y-3">
-          <div class="flex justify-between items-start gap-2">
-            <span class="bg-blue-900/50 text-blue-300 text-xs px-2.5 py-1 rounded font-mono">Q${q.id || idx + 1}</span>
-            <span class="text-xs text-slate-400 font-medium">${q.subject || q.topic || 'GATE ECE'}</span>
-          </div>
-          <p class="text-slate-100 text-base leading-relaxed">${q.question || q.text || ''}</p>
-          ${q.options ? `
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-              ${q.options.map((opt, i) => `<div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-700/50 text-xs text-slate-300"><span class="font-bold text-blue-400 mr-1.5">${String.fromCharCode(65+i)}.</span>${opt}</div>`).join('')}
-            </div>` : ''}
-          ${q.answer ? `
-            <details class="pt-2">
-              <summary class="text-xs font-semibold text-emerald-400 cursor-pointer hover:underline">Show Answer & Explanation</summary>
-              <div class="mt-2 text-xs bg-emerald-950/40 border border-emerald-800/40 p-3 rounded-lg text-emerald-200">
-                <strong>Answer:</strong> ${q.answer}
-                ${q.explanation ? `<p class="mt-1">${q.explanation}</p>` : ''}
+      const toggleBookmark = (id) => {
+        setBookmarks(prev => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+      };
+
+      const startMockExam = () => {
+        setMockActive(true);
+        setTimeLeft(1800);
+        setMockScore(null);
+        setCurrentIndex(0);
+      };
+
+      const finishMockExam = () => {
+        setMockActive(false);
+        let correct = 0;
+        let total = filteredQuestions.length;
+        filteredQuestions.forEach(q => {
+          if (userAnswers[q.id] && userAnswers[q.id].isCorrect) correct++;
+        });
+        setMockScore({ correct, total, percentage: Math.round((correct / (total || 1)) * 100) });
+      };
+
+      const stats = useMemo(() => {
+        const answeredKeys = Object.keys(userAnswers);
+        const totalAnswered = answeredKeys.length;
+        const correctCount = answeredKeys.filter(k => userAnswers[k].isCorrect).length;
+        return {
+          totalQuestions: questions.length,
+          answered: totalAnswered,
+          correct: correctCount,
+          accuracy: totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0,
+          bookmarkedCount: bookmarks.size
+        };
+      }, [questions, userAnswers, bookmarks]);
+
+      return (
+        <div className={`min-h-screen ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+          <header className={`border-b ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} p-4 sticky top-0 z-50 flex flex-wrap justify-between items-center gap-4`}>
+            <div className="flex items-center gap-3">
+              <span className="bg-blue-600 text-white font-bold px-3 py-1.5 rounded-lg text-lg">GATE ECE</span>
+              <div>
+                <h1 className="text-xl font-bold tracking-tight">GATE ECE & Placement Prep Platform</h1>
+                <p className="text-xs text-blue-400 font-medium">Loaded Question Bank: <span id="qCountBadge" className="font-bold">{questions.length}</span> Questions</p>
               </div>
-            </details>` : ''}
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setIsDarkMode(!isDarkMode)} className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${isDarkMode ? 'border-slate-600 hover:bg-slate-700' : 'border-slate-300 hover:bg-slate-100'}`}>
+                {isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
+              </button>
+            </div>
+          </header>
+
+          <nav className={`border-b ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} px-4 py-2 flex flex-wrap gap-2`}>
+            {[
+              { id: 'dashboard', label: '📊 Dashboard' },
+              { id: 'practice', label: '📝 Practice Mode' },
+              { id: 'mock', label: '⏱️ Mock Exam Mode' },
+              { id: 'bookmarks', label: '🔖 Bookmarks & Review' },
+              { id: 'analytics', label: '📈 Analytics' },
+              { id: 'formulas', label: '📐 Formula Library' },
+              { id: 'planner', label: '🗓️ Learning & Planner' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeTab === tab.id ? 'bg-blue-600 text-white' : (isDarkMode ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-100')}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+            {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className={`p-5 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                    <div className="text-slate-400 text-sm font-medium">Total Question Bank</div>
+                    <div className="text-3xl font-bold text-blue-500 mt-2">{stats.totalQuestions}</div>
+                    <div className="text-xs text-slate-400 mt-1">Verified GATE & ECE Questions</div>
+                  </div>
+                  <div className={`p-5 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                    <div className="text-slate-400 text-sm font-medium">Questions Attempted</div>
+                    <div className="text-3xl font-bold text-emerald-500 mt-2">{stats.answered}</div>
+                    <div className="text-xs text-slate-400 mt-1">Active user practice progress</div>
+                  </div>
+                  <div className={`p-5 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                    <div className="text-slate-400 text-sm font-medium">Accuracy Rate</div>
+                    <div className="text-3xl font-bold text-amber-500 mt-2">{stats.accuracy}%</div>
+                    <div className="text-xs text-slate-400 mt-1">{stats.correct} correct out of {stats.answered}</div>
+                  </div>
+                  <div className={`p-5 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                    <div className="text-slate-400 text-sm font-medium">Bookmarked Questions</div>
+                    <div className="text-3xl font-bold text-purple-500 mt-2">{stats.bookmarkedCount}</div>
+                    <div className="text-xs text-slate-400 mt-1">Saved for revision</div>
+                  </div>
+                </div>
+
+                <div className={`p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} space-y-4`}>
+                  <h2 className="text-xl font-bold">Quick Start Practice</h2>
+                  <p className="text-sm text-slate-400">Launch subject-wise practice or high-yield mock tests directly.</p>
+                  <div className="flex flex-wrap gap-3">
+                    <button onClick={() => setActiveTab('practice')} className="bg-blue-600 hover:bg-blue-500 text-white font-medium px-5 py-2.5 rounded-lg text-sm">
+                      Start Practice Mode →
+                    </button>
+                    <button onClick={() => setActiveTab('mock')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-5 py-2.5 rounded-lg text-sm">
+                      Take 30-Min Timed Test ⏱️
+                    </button>
+                    <button onClick={() => setActiveTab('formulas')} className="bg-purple-600 hover:bg-purple-500 text-white font-medium px-5 py-2.5 rounded-lg text-sm">
+                      Explore Formula Sheet 📐
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'practice' && (
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div className={`p-5 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} space-y-5 lg:col-span-1`}>
+                  <h3 className="font-bold text-base border-b pb-2 border-slate-700">Filters & Controls</h3>
+                  
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Section / Subject</label>
+                    <select
+                      value={selectedSection}
+                      onChange={(e) => { setSelectedSection(e.target.value); setCurrentIndex(0); }}
+                      className={`w-full p-2.5 rounded-lg text-sm border ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-300 text-slate-800'}`}
+                    >
+                      <option value="all">All Sections</option>
+                      <option value="technical">Technical (ECE)</option>
+                      <option value="quant">Quantitative Aptitude</option>
+                      <option value="reasoning">Logical Reasoning</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Topic</label>
+                    <select
+                      value={selectedTopic}
+                      onChange={(e) => { setSelectedTopic(e.target.value); setCurrentIndex(0); }}
+                      className={`w-full p-2.5 rounded-lg text-sm border ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-300 text-slate-800'}`}
+                    >
+                      <option value="all">All Topics ({topics.length})</option>
+                      {topics.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Difficulty</label>
+                    <select
+                      value={selectedDifficulty}
+                      onChange={(e) => { setSelectedDifficulty(e.target.value); setCurrentIndex(0); }}
+                      className={`w-full p-2.5 rounded-lg text-sm border ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-300 text-slate-800'}`}
+                    >
+                      <option value="all">All Difficulties</option>
+                      <option value="Easy">Easy</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Hard">Hard</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-400 mb-2">
+                      Question Palette ({filteredQuestions.length})
+                    </label>
+                    <div className="grid grid-cols-5 gap-2 max-h-48 overflow-y-auto pr-1">
+                      {filteredQuestions.map((q, idx) => {
+                        const status = userAnswers[q.id];
+                        let btnStyle = isDarkMode ? 'bg-slate-700 text-slate-300 border-slate-600' : 'bg-slate-100 text-slate-700 border-slate-300';
+                        if (idx === currentIndex) btnStyle = 'ring-2 ring-blue-500 font-bold bg-blue-600 text-white';
+                        else if (status?.isCorrect) btnStyle = 'bg-emerald-600 text-white';
+                        else if (status && !status.isCorrect) btnStyle = 'bg-red-600 text-white';
+                        
+                        return (
+                          <button
+                            key={q.id}
+                            onClick={() => { setCurrentIndex(idx); setSelectedOption(null); setShowExplanation(false); }}
+                            className={`p-1.5 text-xs rounded border text-center transition-all ${btnStyle}`}
+                          >
+                            {idx + 1}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className={`p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} lg:col-span-3 space-y-6`}>
+                  {currentQ ? (
+                    <>
+                      <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-700 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold uppercase px-2.5 py-1 rounded bg-blue-600 text-white">{currentQ.section}</span>
+                          <span className="text-xs font-medium px-2.5 py-1 rounded bg-slate-700 text-slate-300">{currentQ.topic}</span>
+                          <span className={`text-xs font-medium px-2.5 py-1 rounded ${currentQ.difficulty === 'Easy' ? 'bg-emerald-900 text-emerald-300' : (currentQ.difficulty === 'Hard' ? 'bg-red-900 text-red-300' : 'bg-amber-900 text-amber-300')}`}>
+                            {currentQ.difficulty}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-400">ID: {currentQ.id} | Question {currentIndex + 1} of {filteredQuestions.length}</span>
+                          <button
+                            onClick={() => toggleBookmark(currentQ.id)}
+                            className={`p-1.5 rounded text-sm ${bookmarks.has(currentQ.id) ? 'text-amber-400 bg-amber-400/10' : 'text-slate-400 hover:text-white'}`}
+                          >
+                            {bookmarks.has(currentQ.id) ? '★ Bookmarked' : '☆ Bookmark'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="text-base sm:text-lg font-medium leading-relaxed">
+                        {currentQ.question}
+                      </div>
+
+                      <div className="space-y-3">
+                        {currentQ.options.map((opt, oIdx) => {
+                          let optStyle = isDarkMode ? 'border-slate-700 bg-slate-900 hover:border-slate-500' : 'border-slate-200 bg-slate-50 hover:border-slate-400';
+                          if (selectedOption === oIdx) optStyle = 'border-blue-500 bg-blue-500/10 text-blue-400 font-semibold';
+                          if (showExplanation) {
+                            if (oIdx === currentQ.correctAnswer) optStyle = 'border-emerald-500 bg-emerald-500/10 text-emerald-400 font-bold';
+                            else if (selectedOption === oIdx) optStyle = 'border-red-500 bg-red-500/10 text-red-400';
+                          }
+
+                          return (
+                            <button
+                              key={oIdx}
+                              onClick={() => handleSelectOption(oIdx)}
+                              className={`w-full text-left p-4 rounded-xl border transition-all flex items-start gap-3 ${optStyle}`}
+                            >
+                              <span className="w-6 h-6 rounded-full border border-current flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                                {String.fromCharCode(65 + oIdx)}
+                              </span>
+                              <span className="text-sm sm:text-base">{opt}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex flex-wrap justify-between items-center gap-4 pt-4 border-t border-slate-700">
+                        <button
+                          disabled={currentIndex === 0}
+                          onClick={() => { setCurrentIndex(i => i - 1); setSelectedOption(null); setShowExplanation(false); }}
+                          className="px-4 py-2 rounded-lg border border-slate-600 hover:bg-slate-700 text-sm disabled:opacity-40"
+                        >
+                          ← Previous
+                        </button>
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleSubmitAnswer}
+                            disabled={selectedOption === null}
+                            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-medium px-5 py-2 rounded-lg text-sm"
+                          >
+                            Check Answer ✓
+                          </button>
+                        </div>
+
+                        <button
+                          disabled={currentIndex === filteredQuestions.length - 1}
+                          onClick={() => { setCurrentIndex(i => i + 1); setSelectedOption(null); setShowExplanation(false); }}
+                          className="px-4 py-2 rounded-lg border border-slate-600 hover:bg-slate-700 text-sm disabled:opacity-40"
+                        >
+                          Next →
+                        </button>
+                      </div>
+
+                      {showExplanation && (
+                        <div className={`p-5 rounded-xl border ${selectedOption === currentQ.correctAnswer ? 'bg-emerald-950/40 border-emerald-700 text-emerald-200' : 'bg-red-950/40 border-red-700 text-red-200'} space-y-3`}>
+                          <div className="flex items-center gap-2 font-bold text-base">
+                            {selectedOption === currentQ.correctAnswer ? '✓ Correct Answer!' : '✕ Incorrect Answer'}
+                          </div>
+                          <div className="text-sm leading-relaxed">
+                            <span className="font-semibold block mb-1">Step-by-Step Explanation:</span>
+                            {currentQ.explanation}
+                          </div>
+                          {currentQ.formula && (
+                            <div className="text-xs bg-slate-900/60 p-3 rounded-lg border border-slate-700 font-mono text-amber-300">
+                              <strong>Key Formula:</strong> {currentQ.formula}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="p-8 text-center text-slate-400">No questions match the current filters. Please adjust your section or topic selection.</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'mock' && (
+              <div className={`p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} space-y-6`}>
+                <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+                  <div>
+                    <h2 className="text-xl font-bold">Mock Exam / Timed Test Mode</h2>
+                    <p className="text-xs text-slate-400">Simulate official GATE ECE exam conditions with countdown timer.</p>
+                  </div>
+                  {mockActive && (
+                    <div className="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-4 py-2 rounded-lg font-mono text-lg font-bold">
+                      ⏱️ {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                    </div>
+                  )}
+                </div>
+
+                {!mockActive && !mockScore && (
+                  <div className="text-center py-10 space-y-4">
+                    <div className="text-5xl">⏱️</div>
+                    <h3 className="text-lg font-bold">Ready for a Timed Mock Test?</h3>
+                    <p className="text-sm text-slate-400 max-w-md mx-auto">Test your GATE ECE knowledge under strict time pressure with automated scoring.</p>
+                    <button onClick={startMockExam} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-xl text-base">
+                      Start 30-Minute Mock Exam Now
+                    </button>
+                  </div>
+                )}
+
+                {mockActive && (
+                  <div className="space-y-6">
+                    <p className="text-sm text-slate-300">Answer questions using Practice Mode and click below when finished.</p>
+                    <button onClick={finishMockExam} className="bg-red-600 hover:bg-red-500 text-white font-bold px-6 py-2.5 rounded-lg text-sm">
+                      Submit Exam & View Results
+                    </button>
+                  </div>
+                )}
+
+                {mockScore && (
+                  <div className="p-6 rounded-xl bg-slate-900 border border-slate-700 text-center space-y-4">
+                    <h3 className="text-2xl font-bold text-emerald-400">Mock Exam Complete!</h3>
+                    <div className="text-4xl font-extrabold">{mockScore.percentage}%</div>
+                    <p className="text-sm text-slate-300">You scored {mockScore.correct} correct answers out of {mockScore.total} total questions.</p>
+                    <button onClick={startMockExam} className="bg-blue-600 hover:bg-blue-500 text-white font-medium px-5 py-2 rounded-lg text-sm">
+                      Retake Mock Exam
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'bookmarks' && (
+              <div className={`p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} space-y-6`}>
+                <h2 className="text-xl font-bold">Bookmarked Questions ({bookmarks.size})</h2>
+                {bookmarks.size === 0 ? (
+                  <p className="text-slate-400 text-sm">No bookmarked questions saved yet. Click the ☆ Bookmark icon in Practice Mode to save tricky questions for review.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {questions.filter(q => bookmarks.has(q.id)).map(q => (
+                      <div key={q.id} className="p-4 rounded-lg bg-slate-900 border border-slate-700 space-y-2">
+                        <div className="flex justify-between items-center text-xs text-blue-400">
+                          <span>{q.topic} • {q.difficulty}</span>
+                          <button onClick={() => toggleBookmark(q.id)} className="text-red-400 text-xs">Remove</button>
+                        </div>
+                        <div className="text-sm font-medium">{q.question}</div>
+                        <div className="text-xs text-emerald-400 font-semibold">Correct Answer: {q.options[q.correctAnswer]}</div>
+                        <div className="text-xs text-slate-400 border-t border-slate-800 pt-2">{q.explanation}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'analytics' && (
+              <div className={`p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} space-y-6`}>
+                <h2 className="text-xl font-bold">Analytics & Performance Breakdown</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-700">
+                    <div className="text-xs text-slate-400">Total Solved</div>
+                    <div className="text-2xl font-bold mt-1">{stats.answered}</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-700">
+                    <div className="text-xs text-slate-400">Accuracy Rate</div>
+                    <div className="text-2xl font-bold text-emerald-400 mt-1">{stats.accuracy}%</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-700">
+                    <div className="text-xs text-slate-400">Saved Bookmarks</div>
+                    <div className="text-2xl font-bold text-purple-400 mt-1">{stats.bookmarkedCount}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'formulas' && (
+              <div className={`p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} space-y-6`}>
+                <h2 className="text-xl font-bold">GATE ECE High-Yield Formula Library</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-700 space-y-2">
+                    <div className="font-bold text-blue-400 text-sm">Network Theory</div>
+                    <div className="text-xs text-slate-300 font-mono bg-slate-950 p-2 rounded">V_th = Open circuit voltage, R_th = Equiv resistance</div>
+                    <div className="text-xs text-slate-300 font-mono bg-slate-950 p-2 rounded">Resonance: f_0 = 1 / (2 * pi * sqrt(L * C))</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-700 space-y-2">
+                    <div className="font-bold text-emerald-400 text-sm">Signals & Systems</div>
+                    <div className="text-xs text-slate-300 font-mono bg-slate-950 p-2 rounded">Fourier Transform: X(f) = Integral(x(t) * e^(-j*2*pi*f*t) dt)</div>
+                    <div className="text-xs text-slate-300 font-mono bg-slate-950 p-2 rounded">Nyquist Rate: f_s &gt;= 2 * f_max</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-700 space-y-2">
+                    <div className="font-bold text-amber-400 text-sm">Control Systems</div>
+                    <div className="text-xs text-slate-300 font-mono bg-slate-950 p-2 rounded">Closed Loop TF = G(s) / (1 + G(s)H(s))</div>
+                    <div className="text-xs text-slate-300 font-mono bg-slate-950 p-2 rounded">Phase Margin = 180 + angle(G(j*w_gc)*H(j*w_gc))</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-700 space-y-2">
+                    <div className="font-bold text-purple-400 text-sm">Analog & Digital Electronics</div>
+                    <div className="text-xs text-slate-300 font-mono bg-slate-950 p-2 rounded">Op-Amp Inverting Gain = -Rf / R1</div>
+                    <div className="text-xs text-slate-300 font-mono bg-slate-950 p-2 rounded">BJT Collector Current: I_C = beta * I_B</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'planner' && (
+              <div className={`p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} space-y-6`}>
+                <h2 className="text-xl font-bold">GATE ECE Study Planner & Roadmap</h2>
+                <div className="space-y-3">
+                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-700 flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-sm">Phase 1: Core Subjects Mastery</div>
+                      <div className="text-xs text-slate-400">Network Theory, Signals & Systems, Digital Circuits</div>
+                    </div>
+                    <span className="text-xs bg-emerald-900 text-emerald-300 px-2.5 py-1 rounded">Active</span>
+                  </div>
+                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-700 flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-sm">Phase 2: Advanced ECE Concepts</div>
+                      <div className="text-xs text-slate-400">Analog Circuits, Control Systems, Communications, Electromagnetics</div>
+                    </div>
+                    <span className="text-xs bg-amber-900 text-amber-300 px-2.5 py-1 rounded">Upcoming</span>
+                  </div>
+                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-700 flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-sm">Phase 3: Aptitude & Mock Test Series</div>
+                      <div className="text-xs text-slate-400">General Aptitude, Quantitative, High-Yield Full Length Mocks</div>
+                    </div>
+                    <span className="text-xs bg-slate-800 text-slate-400 px-2.5 py-1 rounded">Planned</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </main>
         </div>
-      `).join('');
+      );
     }
 
-    function filterQuestions() {
-      renderQuestions();
-    }
-
-    window.addEventListener('DOMContentLoaded', () => {
-      switchPart(1);
-    });
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
   </script>
 </body>
-</html>="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>GATE ECE &amp; Placement Intelligence Platform — 20,000 Questions</title>
-    <meta name="description" content="Comprehensive 20,000-question engineering preparation, analytics, spaced-repetition revision, formula library, and timed exam simulation platform for GATE ECE and Core Placements." />
-    <meta property="og:title" content="GATE ECE &amp; Placement Intelligence Platform" />
-    <meta property="og:description" content="Comprehensive 20,000-question engineering preparation, analytics, spaced-repetition revision, formula library, and timed exam simulation platform for GATE ECE and Core Placements." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  </head>
-  <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
-    <div id="root"></div>
-    <script src="/questions_part1.js"></script>
-    <script src="/questions_part2.js"></script>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
 </html>
-
