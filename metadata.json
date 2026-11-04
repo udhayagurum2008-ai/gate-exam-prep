@@ -1,0 +1,6 @@
+{
+  "name": "GATE ECE & Placement Intelligence Platform",
+  "description": "Comprehensive 20,000-question engineering preparation, analytics, spaced-repetition revision, formula library, and timed exam simulation platform for GATE ECE and Core Placements.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
