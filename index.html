@@ -1,15 +1,24 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>GATE ECE & Placement Intelligence Platform – 20,000 Questions</title>
-    <meta name="description" content="Comprehensive 20,000-question engineering preparation, analytics, spaced-repetition engine, and performance diagnostic platform." />
-  </head>
-  <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
-    <div id="root"></div>
-    <script src="./questions_part1.js"></script>
-    <script src="./questions_part2.js"></script>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>GATE ECE & Placement Intelligence Platform - 20,000 Questions</title>
+  <meta name="description" content="Comprehensive 20,000-question engineering preparation, analytics, spaced-repetition, and mock test environment for GATE ECE & Placement exams." />
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
+  <div id="root"></div>
+  <script src="./questions_part1.js"></script>
+  <script src="./questions_part2.js"></script>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
 </html>
